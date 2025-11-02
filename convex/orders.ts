@@ -1,36 +1,61 @@
 // convex/orders.ts
-import { defineTable } from "convex/server";
+import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
-export const ordersTable = defineTable({
-  customerName: v.string(),
-  customerEmail: v.string(),
-  customerPhone: v.string(),
-  shippingAddress: v.string(),
-  shippingCity: v.string(),
-  shippingPostcode: v.string(),
-  shippingCountry: v.string(),
-
-  items: v.array(
-    v.object({
-      id: v.id("products"), // or v.string() if no products table
+export const createOrder = mutation({
+  args: {
+    orderNumber: v.string(),
+    items: v.array(
+      v.object({
+        productId: v.string(),
+        productName: v.string(),
+        price: v.number(),
+        quantity: v.number(),
+        image: v.string(),
+      })
+    ),
+    shipping: v.object({
       name: v.string(),
-      price: v.number(),
-      quantity: v.number(),
-    })
-  ),
+      email: v.string(),
+      phone: v.string(),
+      address: v.string(),
+      zipCode: v.string(),
+      city: v.string(),
+      country: v.string(),
+    }),
+    payment: v.object({
+      paymentMethod: v.union(v.literal("eMoney"), v.literal("cash")),
+      eMoneyNumber: v.optional(v.string()),
+      eMoneyPin: v.optional(v.string()),
+    }),
+    subtotal: v.number(),
+    shipping_cost: v.number(),
+    vat: v.number(),
+    grandTotal: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const orderId = await ctx.db.insert("orders", {
+      ...args,
+      status: "confirmed",
+    });
+    return orderId;
+  },
+});
 
-  subtotal: v.number(),
-  shipping: v.number(),
-  tax: v.number(),
-  grandTotal: v.number(),
+export const getOrderByNumber = query({
+  args: { orderNumber: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("orders")
+      .filter((q) => q.eq(q.field("orderNumber"), args.orderNumber))
+      .first();
+  },
+});
 
-  status: v.union(
-    v.literal("pending"),
-    v.literal("confirmed"),
-    v.literal("shipped")
-  ),
-  createdAt: v.number(),
-})
-  .index("by_email", ["customerEmail"])
-  .index("by_created", ["createdAt"]);
+export const getOrdersByEmail = query({
+  args: { email: v.string() },
+  handler: async (ctx, args) => {
+    const allOrders = await ctx.db.query("orders").collect();
+    return allOrders.filter((order) => order.shipping.email === args.email);
+  },
+});
